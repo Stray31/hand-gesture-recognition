@@ -6,59 +6,40 @@ pyautogui.FAILSAFE = False
 
 
 class ShortcutController:
-    """
-    Alt-Tab controller (REAL Alt hold):
-
-    - Right hand: closed fist (held)  -> Alt DOWN
-    - Left index tap                  -> Tab        (forward)
-    - Left middle tap                 -> Shift+Tab  (backward)
-    - Release fist / lose tracking    -> Alt UP (failsafe)
-
-    Requires Alt-suppression fix in app.py to avoid Tk freeze.
-    """
+    """Alt-Tab package gesture with persistent Alt hold + left-hand navigation."""
 
     def __init__(
         self,
         fist_frames_required: int = 3,
         release_frames_required: int = 2,
         lost_hand_timeout: float = 0.25,
-        tab_cooldown: float = 0.18,
+        tab_cooldown: float = 0.20,
         tap_frames_required: int = 2,
     ):
-        # Right fist stability
-        self.fist_frames_required = fist_frames_required
-        self.release_frames_required = release_frames_required
-        self.lost_hand_timeout = lost_hand_timeout
+        self.fist_frames_required = max(1, int(fist_frames_required))
+        self.release_frames_required = max(1, int(release_frames_required))
+        self.lost_hand_timeout = float(lost_hand_timeout)
+        self.combo_frames_required = max(1, int(tap_frames_required))
+        self.tap_frames_required = max(1, int(tap_frames_required))
+        self.tab_cooldown = float(tab_cooldown)
 
-        # Tap stability
-        self.tap_frames_required = tap_frames_required
-        self.tab_cooldown = tab_cooldown
+        self._combo_frames = 0
+        self._fist_frames = 0
+        self._release_frames = 0
+        self._last_tab_time = 0.0
+        self._last_seen_hands_time = 0.0
 
-        # Real key state
+        self._index_only_frames = 0
+        self._middle_only_frames = 0
+        self._index_action_ready = True
+        self._middle_action_ready = True
+
         self.alt_held = False
 
-        # Right hand tracking
-        self._right_fist_frames = 0
-        self._right_release_frames = 0
-        self._last_right_seen_time = 0.0
-
-        # Left index (forward)
-        self._index_down_frames = 0
-        self._index_up_frames = 0
-
-        # Left middle (backward)
-        self._middle_down_frames = 0
-        self._middle_up_frames = 0
-
-        self._action_ready = True
-        self._last_action_time = 0.0
-
-        # UI feedback
         self.last_event_text = "Ready"
         self.last_event_time = 0.0
         self.event_show_seconds = 1.0
 
-    # ---------------- UI helpers ----------------
     def set_event(self, text: str):
         self.last_event_text = text
         self.last_event_time = time.time()
@@ -66,133 +47,138 @@ class ShortcutController:
     def event_visible(self) -> bool:
         return (time.time() - self.last_event_time) <= self.event_show_seconds
 
-    # ---------------- Landmark helpers ----------------
     @staticmethod
-    def _finger_down(landmarks, tip_idx, pip_idx) -> bool:
-        return landmarks[tip_idx].y > landmarks[pip_idx].y
+    def _finger_up(landmarks, tip_idx, pip_idx) -> bool:
+        return landmarks[tip_idx].y < landmarks[pip_idx].y
+
+    @classmethod
+    def _finger_down(cls, landmarks, tip_idx, pip_idx) -> bool:
+        return not cls._finger_up(landmarks, tip_idx, pip_idx)
 
     def _is_fist(self, landmarks) -> bool:
-        index = self._finger_down(landmarks, 8, 6)
-        middle = self._finger_down(landmarks, 12, 10)
-        ring = self._finger_down(landmarks, 16, 14)
-        pinky = self._finger_down(landmarks, 20, 18)
-        return index and middle and ring and pinky
+        index_down = self._finger_down(landmarks, 8, 6)
+        middle_down = self._finger_down(landmarks, 12, 10)
+        ring_down = self._finger_down(landmarks, 16, 14)
+        pinky_down = self._finger_down(landmarks, 20, 18)
+        return index_down and middle_down and ring_down and pinky_down
 
-    def _index_down(self, landmarks) -> bool:
-        return self._finger_down(landmarks, 8, 6)
+    def _is_left_index_middle_only(self, landmarks) -> bool:
+        index_up = self._finger_up(landmarks, 8, 6)
+        middle_up = self._finger_up(landmarks, 12, 10)
+        ring_down = self._finger_down(landmarks, 16, 14)
+        pinky_down = self._finger_down(landmarks, 20, 18)
+        return index_up and middle_up and ring_down and pinky_down
 
-    def _middle_down(self, landmarks) -> bool:
-        return self._finger_down(landmarks, 12, 10)
+    def _is_left_index_only(self, landmarks) -> bool:
+        index_up = self._finger_up(landmarks, 8, 6)
+        middle_down = self._finger_down(landmarks, 12, 10)
+        ring_down = self._finger_down(landmarks, 16, 14)
+        pinky_down = self._finger_down(landmarks, 20, 18)
+        return index_up and middle_down and ring_down and pinky_down
 
-    # ---------------- Safety ----------------
-    def force_release_alt(self):
+    def _is_left_middle_only(self, landmarks) -> bool:
+        index_down = self._finger_down(landmarks, 8, 6)
+        middle_up = self._finger_up(landmarks, 12, 10)
+        ring_down = self._finger_down(landmarks, 16, 14)
+        pinky_down = self._finger_down(landmarks, 20, 18)
+        return index_down and middle_up and ring_down and pinky_down
+
+    def _press_alt_tab_once(self):
+        pyautogui.keyDown("alt")
+        pyautogui.press("tab")
+
+    def _ensure_alt_released(self):
         if self.alt_held:
             try:
                 pyautogui.keyUp("alt")
             except Exception:
                 pass
-            self.alt_held = False
-            self.set_event("ALT UP (forced)")
+        self.alt_held = False
+        self._release_frames = 0
+        self._index_only_frames = 0
+        self._middle_only_frames = 0
+        self._index_action_ready = True
+        self._middle_action_ready = True
 
-        self._right_fist_frames = 0
-        self._right_release_frames = 0
-        self._action_ready = True
+    def force_release_alt(self):
+        self._ensure_alt_released()
+        self._combo_frames = 0
+        self._fist_frames = 0
 
-    # ---------------- Main update ----------------
     def update(self, left_landmarks, right_landmarks):
         now = time.time()
 
-        # -------- Right fist controls Alt --------
-        if right_landmarks is not None:
-            self._last_right_seen_time = now
-            fist_now = self._is_fist(right_landmarks)
+        if left_landmarks is None or right_landmarks is None:
+            self._combo_frames = 0
+            self._fist_frames = 0
+            if self.alt_held and (now - self._last_seen_hands_time) >= self.lost_hand_timeout:
+                self._ensure_alt_released()
+            elif self.alt_held:
+                self._release_frames += 1
+                if self._release_frames >= self.release_frames_required:
+                    self._ensure_alt_released()
+            return
+
+        self._last_seen_hands_time = now
+
+        right_fist = self._is_fist(right_landmarks)
+        combo_on = right_fist and self._is_left_index_middle_only(left_landmarks)
+
+        if right_fist:
+            self._fist_frames += 1
+            self._release_frames = 0
         else:
-            fist_now = False
+            self._fist_frames = 0
+            if self.alt_held:
+                self._release_frames += 1
+                if self._release_frames >= self.release_frames_required:
+                    self._ensure_alt_released()
+            return
 
-        if fist_now:
-            self._right_fist_frames += 1
-            self._right_release_frames = 0
+        if (not self.alt_held) and combo_on:
+            self._combo_frames += 1
+            if self._combo_frames >= self.combo_frames_required:
+                self._combo_frames = 0
+                self._last_tab_time = now
+                self._press_alt_tab_once()
+                self.alt_held = True
+                self.set_event("ALT+TAB HOLD")
+                return
         else:
-            self._right_release_frames += 1
-            self._right_fist_frames = 0
+            self._combo_frames = 0
 
-        # Alt DOWN
-        if not self.alt_held and self._right_fist_frames >= self.fist_frames_required:
-            pyautogui.keyDown("alt")
-            self.alt_held = True
-            self.set_event("ALT DOWN")
-            self._right_fist_frames = 0
-            self._action_ready = True
-
-        # Safety: lose right hand
-        if self.alt_held and (now - self._last_right_seen_time) > self.lost_hand_timeout:
-            self.force_release_alt()
+        if not self.alt_held:
             return
 
-        # Alt UP (fist released)
-        if self.alt_held and self._right_release_frames >= self.release_frames_required:
-            pyautogui.keyUp("alt")
-            self.alt_held = False
-            self.set_event("ALT UP")
-            self._right_release_frames = 0
+        if self._fist_frames < self.fist_frames_required:
             return
 
-        # -------- Left hand navigation --------
-        if not self.alt_held or left_landmarks is None:
+        if (now - self._last_tab_time) < self.tab_cooldown:
             return
 
-        index_down = self._index_down(left_landmarks)
-        middle_down = self._middle_down(left_landmarks)
+        index_only = self._is_left_index_only(left_landmarks)
+        middle_only = self._is_left_middle_only(left_landmarks)
 
-        # Track index
-        if index_down:
-            self._index_down_frames += 1
-            self._index_up_frames = 0
+        if index_only and not middle_only:
+            self._index_only_frames += 1
+            self._middle_only_frames = 0
+            self._middle_action_ready = True
+            if self._index_only_frames >= self.tap_frames_required and self._index_action_ready:
+                pyautogui.hotkey("shift", "tab")
+                self._last_tab_time = now
+                self._index_action_ready = False
+                self.set_event("ALT+TAB PREV")
+        elif middle_only and not index_only:
+            self._middle_only_frames += 1
+            self._index_only_frames = 0
+            self._index_action_ready = True
+            if self._middle_only_frames >= self.tap_frames_required and self._middle_action_ready:
+                pyautogui.press("tab")
+                self._last_tab_time = now
+                self._middle_action_ready = False
+                self.set_event("ALT+TAB NEXT")
         else:
-            self._index_up_frames += 1
-            self._index_down_frames = 0
-
-        # Track middle
-        if middle_down:
-            self._middle_down_frames += 1
-            self._middle_up_frames = 0
-        else:
-            self._middle_up_frames += 1
-            self._middle_down_frames = 0
-
-        # Re-arm after fingers released
-        if self._index_up_frames >= 1 and self._middle_up_frames >= 1:
-            self._action_ready = True
-
-        # Cooldown gate
-        if (now - self._last_action_time) < self.tab_cooldown:
-            return
-
-        # -------- Forward (Index) --------
-        if (
-            self._action_ready
-            and self._index_down_frames >= self.tap_frames_required
-            and not middle_down
-        ):
-            pyautogui.press("tab")
-            self._last_action_time = now
-            self._action_ready = False
-            self.set_event("ALT + TAB →")
-            self._index_down_frames = 0
-            return
-
-        # -------- Backward (Middle) --------
-        if (
-            self._action_ready
-            and self._middle_down_frames >= self.tap_frames_required
-            and not index_down
-        ):
-            pyautogui.keyDown("shift")
-            pyautogui.press("tab")
-            pyautogui.keyUp("shift")
-
-            self._last_action_time = now
-            self._action_ready = False
-            self.set_event("ALT + SHIFT + TAB ←")
-            self._middle_down_frames = 0
-            return
+            self._index_only_frames = 0
+            self._middle_only_frames = 0
+            self._index_action_ready = True
+            self._middle_action_ready = True

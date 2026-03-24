@@ -9,7 +9,7 @@ pyautogui.FAILSAFE = False
 class ModeController:
     """
     1) System Lock:
-       - Open palm held for lock_hold_seconds toggles LOCK/UNLOCK
+       - Right pinky-only held for lock_hold_seconds toggles LOCK/UNLOCK
 
     2) Scroll via PINCH (reliable):
        - Pinch (thumb tip 4 + index tip 8 close) activates scroll clutch
@@ -34,11 +34,11 @@ class ModeController:
         scroll_smoothing: float = 0.55,     # 0..1, higher = smoother but more lag
         scroll_clamp: int = 1200,           # cap wheel movement per tick
     ):
-        # Lock
+        # Lock (right-hand pinky-only)
         self.locked = False
         self.lock_hold_seconds = lock_hold_seconds
         self.lock_toggle_cooldown = lock_toggle_cooldown
-        self._palm_hold_start = None
+        self._right_pinky_hold_start = None
         self._last_lock_toggle_time = 0.0
 
         # Pinch
@@ -89,6 +89,20 @@ class ModeController:
         pinky_up = self._finger_up(landmarks, 20, 18)
         return index_up and middle_up and ring_up and pinky_up
 
+    def is_fist(self, landmarks) -> bool:
+        index_down = not self._finger_up(landmarks, 8, 6)
+        middle_down = not self._finger_up(landmarks, 12, 10)
+        ring_down = not self._finger_up(landmarks, 16, 14)
+        pinky_down = not self._finger_up(landmarks, 20, 18)
+        return index_down and middle_down and ring_down and pinky_down
+
+    def is_right_pinky_only(self, landmarks) -> bool:
+        index_up = self._finger_up(landmarks, 8, 6)
+        middle_up = self._finger_up(landmarks, 12, 10)
+        ring_up = self._finger_up(landmarks, 16, 14)
+        pinky_up = self._finger_up(landmarks, 20, 18)
+        return pinky_up and (not index_up) and (not middle_up) and (not ring_up)
+
     def _pinch_now(self, landmarks) -> bool:
         # Thumb tip = 4, Index tip = 8
         d = self._dist(landmarks[4], landmarks[8])
@@ -101,30 +115,26 @@ class ModeController:
     def update_lock(self, left_landmarks, right_landmarks):
         """
         Always call every frame (even when locked).
-        Toggles lock on open palm hold.
+        Toggles lock on right pinky-only hold.
         """
         now = time.time()
 
-        palm_detected = False
-        if left_landmarks is not None and self.is_open_palm(left_landmarks):
-            palm_detected = True
-        if right_landmarks is not None and self.is_open_palm(right_landmarks):
-            palm_detected = True
+        right_pinky_detected = right_landmarks is not None and self.is_right_pinky_only(right_landmarks)
 
         can_toggle = (now - self._last_lock_toggle_time) >= self.lock_toggle_cooldown
 
-        if palm_detected and can_toggle:
-            if self._palm_hold_start is None:
-                self._palm_hold_start = now
+        if right_pinky_detected and can_toggle:
+            if self._right_pinky_hold_start is None:
+                self._right_pinky_hold_start = now
             else:
-                if (now - self._palm_hold_start) >= self.lock_hold_seconds:
+                if (now - self._right_pinky_hold_start) >= self.lock_hold_seconds:
                     self.locked = not self.locked
                     self._last_lock_toggle_time = now
-                    self._palm_hold_start = None
+                    self._right_pinky_hold_start = None
                     self.set_event("SYSTEM LOCKED" if self.locked else "SYSTEM UNLOCKED")
                     self._reset_scroll_state()
         else:
-            self._palm_hold_start = None
+            self._right_pinky_hold_start = None
 
     def update_scroll(self, left_landmarks, right_landmarks):
         """

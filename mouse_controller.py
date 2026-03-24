@@ -33,6 +33,7 @@ class MouseController:
 
         self._smoothed_x = None
         self._smoothed_y = None
+        self._screen_size = pyautogui.size()
 
         self.use_thumb_freeze = use_thumb_freeze
         self._freeze_now = False
@@ -108,7 +109,7 @@ class MouseController:
         target_norm_x = max(0.0, min(1.0, 0.5 + cx))
         target_norm_y = max(0.0, min(1.0, 0.5 + cy))
 
-        screen_w, screen_h = pyautogui.size()
+        screen_w, screen_h = self._screen_size
         target_x = target_norm_x * screen_w
         target_y = target_norm_y * screen_h
 
