@@ -14,9 +14,9 @@ def trigger_action(gesture_name, hand_type):
         print("[ACTION] PeaceSign -> Mouse mode")
 
     elif gesture_name == "ThumbsUp":
-        pyautogui.press("volumeup")  # volume up
+        pyautogui.hotkey('shift', 'volumeup')  # volume up
         print("[ACTION] ThumbsUp -> Volume Up")
 
     elif gesture_name == "ThumbsDown":
-        pyautogui.press("volumedown")  # volume down
+        pyautogui.hotkey('shift', 'volumedown')  # volume down
         print("[ACTION] ThumbsDown -> Volume Down")

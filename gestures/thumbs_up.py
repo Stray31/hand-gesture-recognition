@@ -17,16 +17,18 @@ class ThumbsUp(Gesture):
         def finger_extended(tip_idx, pip_idx):
             return landmarks[tip_idx].y < landmarks[pip_idx].y
 
-        # Thumb landmarks: tip=4, pip=3
-        thumb_up = finger_extended(4, 3)
+        # Check thumb is UP (y coordinate smaller/higher on screen)
+        # Thumb: tip=4, ip=3, mcp=2
+        thumb_up = landmarks[4].y < landmarks[3].y < landmarks[2].y
         
-        # Other fingers should be down (folded)
+        # All other fingers should be DOWN (folded)
         index_down = not finger_extended(8, 6)
         middle_down = not finger_extended(12, 10)
         ring_down = not finger_extended(16, 14)
         pinky_down = not finger_extended(20, 18)
 
-        # Thumbs up: thumb extended, all others folded
+        # Thumbs up: thumb extended up, all others folded
         if thumb_up and index_down and middle_down and ring_down and pinky_down:
             return True
         return False
+
