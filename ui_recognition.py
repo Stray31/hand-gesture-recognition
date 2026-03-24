@@ -15,6 +15,8 @@ from utils import (
 from gestures.swipe_left import SwipeLeft
 from gestures.swipe_right import SwipeRight
 from gestures.peace_sign import PeaceSign
+from gestures.thumbs_up import ThumbsUp
+from gestures.thumbs_down import ThumbsDown
 from actions import trigger_action
 
 from mouse_controller import MouseController
@@ -79,7 +81,7 @@ class RecognitionScreen(tk.Frame):
         self.gesture_queue_left = []
         self.gesture_queue_right = []
 
-        self.GESTURES = [SwipeLeft(), SwipeRight(), PeaceSign()]
+        self.GESTURES = [SwipeLeft(), SwipeRight(), PeaceSign(), ThumbsUp(), ThumbsDown()]
 
         # -----------------------------
         # Controllers
