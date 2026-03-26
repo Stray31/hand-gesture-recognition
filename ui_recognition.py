@@ -5,6 +5,7 @@ from types import SimpleNamespace
 
 import cv2
 import mediapipe as mp
+import pyautogui
 from PIL import Image, ImageTk
 
 from camera import CameraManager
@@ -90,6 +91,13 @@ class RecognitionScreen(tk.Frame):
         self._last_mouse_lock_toggle_time = 0.0
         self.mouse_locked = False
 
+        self.ZOOM_CLICK_FRAMES_REQUIRED = 2
+        self.ZOOM_CLICK_COOLDOWN = 0.45
+        self._zoom_click_frames = 0
+        self._zoom_click_release_frames = 0
+        self._zoom_click_armed = True
+        self._last_zoom_click_time = 0.0
+
         # -----------------------------
         # Hand validity filter
         # -----------------------------
@@ -106,6 +114,8 @@ class RecognitionScreen(tk.Frame):
 
         self.last_action_time = 0.0
         self.COOLDOWN = 1.5
+        self.GESTURE_ACTION_GUARD = 0.45
+        self._gesture_lock_until = 0.0
 
         self.GESTURE_FRAMES_REQUIRED = 4
         self.gesture_queue_left = []
@@ -153,20 +163,24 @@ class RecognitionScreen(tk.Frame):
         )
 
         self.zoom = ZoomController(
-            distance_delta_threshold=0.026,
-            zoom_cooldown=0.10,
-            wheel_step=120,
-            smooth_alpha=0.45,
-            enter_hold_seconds=1.5,
-            exit_hold_seconds=1.5,
+            distance_delta_threshold=0.022,
+            zoom_cooldown=0.030,
+            wheel_step=45,
+            smooth_alpha=0.78,
+            enter_hold_seconds=1.0,
+            exit_hold_seconds=1.0,
             toggle_cooldown=1.0,
+            zoom_gain=520.0,
+            zoom_decay=0.86,
+            max_wheel_per_tick=60,
+            output_mode="auto",
+            title_refresh_seconds=0.5,
+            control_requires_open_palms=True,
         )
 
         self.volume = VolumeController(
-            toggle_hold_seconds=1.5,
+            toggle_hold_seconds=1.0,
             toggle_cooldown=1.0,
-            pinch_close_threshold=0.34,
-            pinch_open_threshold=0.44,
             volume_step_cooldown=0.10,
         )
 
@@ -394,6 +408,45 @@ class RecognitionScreen(tk.Frame):
     def _finger_down(cls, landmarks, tip_idx, pip_idx):
         return not cls._finger_up(landmarks, tip_idx, pip_idx)
 
+    def _reset_zoom_click_state(self):
+        self._zoom_click_frames = 0
+        self._zoom_click_release_frames = 0
+        self._zoom_click_armed = True
+
+    def _is_left_zoom_click_gesture(self, left_landmarks):
+        if left_landmarks is None:
+            return False
+
+        index_up = self._finger_up(left_landmarks, 8, 6)
+        middle_up = self._finger_up(left_landmarks, 12, 10)
+        ring_down = self._finger_down(left_landmarks, 16, 14)
+        pinky_down = self._finger_down(left_landmarks, 20, 18)
+        return index_up and middle_up and ring_down and pinky_down
+
+    def _handle_zoom_mode_click(self, left_landmarks):
+        now = time.time()
+        pose_on = self._is_left_zoom_click_gesture(left_landmarks)
+
+        if pose_on:
+            self._zoom_click_frames += 1
+            self._zoom_click_release_frames = 0
+        else:
+            self._zoom_click_frames = 0
+            self._zoom_click_release_frames += 1
+            if self._zoom_click_release_frames >= 1:
+                self._zoom_click_armed = True
+            return
+
+        if (now - self._last_zoom_click_time) < self.ZOOM_CLICK_COOLDOWN:
+            return
+
+        if self._zoom_click_armed and self._zoom_click_frames >= self.ZOOM_CLICK_FRAMES_REQUIRED:
+            pyautogui.click(button="left")
+            self._zoom_click_armed = False
+            self._last_zoom_click_time = now
+            self._zoom_click_frames = 0
+            self.zoom.set_event("ZOOM MODE LEFT CLICK")
+
     def _is_left_pinky_only(self, left_landmarks):
         if left_landmarks is None:
             return False
@@ -470,6 +523,10 @@ class RecognitionScreen(tk.Frame):
 
     def stop_camera(self):
         self.camera_running = False
+        try:
+            self.zoom.force_release_ctrl()
+        except Exception:
+            pass
         if self.camera_job is not None:
             try:
                 self.after_cancel(self.camera_job)
@@ -518,6 +575,7 @@ class RecognitionScreen(tk.Frame):
             self.mouse_locked = False
             self.mouse.enabled = True
             self.zoom.reset_all()
+            self._reset_zoom_click_state()
             self.volume.reset_all()
 
         self.refresh_ui()
@@ -637,6 +695,12 @@ class RecognitionScreen(tk.Frame):
         pad = 18
         x = max(0, self.winfo_screenwidth() - self.PIP_WIDTH - pad)
         y = pad + 8
+        try:
+            # Re-assert topmost every update; some apps can steal z-order.
+            self.pip_window.attributes("-topmost", True)
+            self.pip_window.lift()
+        except Exception:
+            pass
         self.pip_window.geometry(f"{self.PIP_WIDTH}x{self.PIP_HEIGHT}+{x}+{y}")
 
     def _update_pip_state(self):
@@ -833,6 +897,7 @@ class RecognitionScreen(tk.Frame):
                     self.shortcuts.force_release_alt()
                     self.mouse.reset()
                     self.zoom.reset_all()
+                    self._reset_zoom_click_state()
                     self.volume.update_control(None, None, enabled=False)
 
                     self.gesture_queue_left.clear()
@@ -849,6 +914,7 @@ class RecognitionScreen(tk.Frame):
                         self.clicks.force_release_left()
                         self.mouse.reset()
                         self.zoom.reset_all()
+                        self._reset_zoom_click_state()
                         self.modes.update_scroll(None, None)
                         self.volume.update_control(left_landmarks, right_landmarks, enabled=True)
                     else:
@@ -863,48 +929,65 @@ class RecognitionScreen(tk.Frame):
                             self.clicks.force_release_left()
                             self.mouse.reset()
                             self.modes.update_scroll(None, None)
+                            self._handle_zoom_mode_click(left_landmarks)
                         else:
+                            self._reset_zoom_click_state()
                             self.shortcuts.update(left_landmarks, right_landmarks)
                             self.modes.update_scroll(left_landmarks, right_landmarks)
 
                     if self.shortcuts.alt_held or self.modes.scroll_active or self.zoom.active:
                         self.clicks.force_release_left()
                     else:
+                        gesture_guard_active = time.time() < self._gesture_lock_until
                         for item in hand_data:
+                            matched = []
                             for gesture in self.GESTURES:
                                 if gesture.detect(item.landmarks, item.hand_type):
-                                    if item.hand_type == "Left":
-                                        frame_gesture_left = gesture.name
-                                    else:
-                                        frame_gesture_right = gesture.name
-                                        if gesture.name == "PeaceSign":
-                                            self.mouse.update(item.landmarks, item.hand_type)
-                                            self.clicks.update(item.landmarks)
+                                    matched.append(gesture.name)
+
+                            # Ambiguous frame (multiple gestures) is ignored to prevent cross-triggering.
+                            detected_name = matched[0] if len(matched) == 1 else None
+
+                            if item.hand_type == "Left":
+                                frame_gesture_left = detected_name
+                            else:
+                                frame_gesture_right = detected_name
+                                if (not gesture_guard_active) and detected_name == "PeaceSign" and (not self.mouse_locked):
+                                    self.mouse.update(item.landmarks, item.hand_type)
+                                    self.clicks.update(item.landmarks)
+                                elif self.mouse_locked:
+                                    self.clicks.force_release_left()
 
                     if not self.modes.scroll_active and not self.shortcuts.alt_held and not self.zoom.active:
-                        self.gesture_queue_left.append(frame_gesture_left)
-                        if len(self.gesture_queue_left) > self.GESTURE_FRAMES_REQUIRED:
-                            self.gesture_queue_left.pop(0)
+                        if time.time() < self._gesture_lock_until:
+                            confirmed_left = None
+                            confirmed_right = None
+                            self.gesture_queue_left.clear()
+                            self.gesture_queue_right.clear()
+                        else:
+                            self.gesture_queue_left.append(frame_gesture_left)
+                            if len(self.gesture_queue_left) > self.GESTURE_FRAMES_REQUIRED:
+                                self.gesture_queue_left.pop(0)
 
-                        confirmed_left = None
-                        if (
-                            len(self.gesture_queue_left) == self.GESTURE_FRAMES_REQUIRED
-                            and self.gesture_queue_left.count(self.gesture_queue_left[0]) == len(self.gesture_queue_left)
-                            and self.gesture_queue_left[0] is not None
-                        ):
-                            confirmed_left = self.gesture_queue_left[0]
+                            confirmed_left = None
+                            if (
+                                len(self.gesture_queue_left) == self.GESTURE_FRAMES_REQUIRED
+                                and self.gesture_queue_left.count(self.gesture_queue_left[0]) == len(self.gesture_queue_left)
+                                and self.gesture_queue_left[0] is not None
+                            ):
+                                confirmed_left = self.gesture_queue_left[0]
 
-                        self.gesture_queue_right.append(frame_gesture_right)
-                        if len(self.gesture_queue_right) > self.GESTURE_FRAMES_REQUIRED:
-                            self.gesture_queue_right.pop(0)
+                            self.gesture_queue_right.append(frame_gesture_right)
+                            if len(self.gesture_queue_right) > self.GESTURE_FRAMES_REQUIRED:
+                                self.gesture_queue_right.pop(0)
 
-                        confirmed_right = None
-                        if (
-                            len(self.gesture_queue_right) == self.GESTURE_FRAMES_REQUIRED
-                            and self.gesture_queue_right.count(self.gesture_queue_right[0]) == len(self.gesture_queue_right)
-                            and self.gesture_queue_right[0] is not None
-                        ):
-                            confirmed_right = self.gesture_queue_right[0]
+                            confirmed_right = None
+                            if (
+                                len(self.gesture_queue_right) == self.GESTURE_FRAMES_REQUIRED
+                                and self.gesture_queue_right.count(self.gesture_queue_right[0]) == len(self.gesture_queue_right)
+                                and self.gesture_queue_right[0] is not None
+                            ):
+                                confirmed_right = self.gesture_queue_right[0]
                     else:
                         confirmed_left = None
                         confirmed_right = None
@@ -915,11 +998,13 @@ class RecognitionScreen(tk.Frame):
                     if confirmed_right and confirmed_right != "PeaceSign" and (now - self.last_action_time > self.COOLDOWN):
                         trigger_action(confirmed_right, "Right")
                         self.last_action_time = now
+                        self._gesture_lock_until = now + self.GESTURE_ACTION_GUARD
                         self.gesture_queue_right = []
 
                     if confirmed_left and (now - self.last_action_time > self.COOLDOWN):
                         trigger_action(confirmed_left, "Left")
                         self.last_action_time = now
+                        self._gesture_lock_until = now + self.GESTURE_ACTION_GUARD
                         self.gesture_queue_left = []
 
                     active_gesture = confirmed_left or confirmed_right
@@ -1051,7 +1136,7 @@ class RecognitionScreen(tk.Frame):
                 self.video_label.configure(image=main_imgtk)
                 self._update_label(
                     self.camera_placeholder,
-                    text="VOLUME MODE ACTIVE\nLeft pinch controls volume\nRight open palm holds level",
+                    text="VOLUME MODE ACTIVE\nLeft index-only=UP | Left thumb-only=DOWN\nRight open palm holds level",
                     fg="#66d69a",
                 )
             elif self.zoom.active:
@@ -1059,7 +1144,7 @@ class RecognitionScreen(tk.Frame):
                 self.video_label.configure(image=main_imgtk)
                 self._update_label(
                     self.camera_placeholder,
-                    text="ZOOM MODE ACTIVE\nUse two-hand spread in/out",
+                    text="ZOOM MODE ACTIVE\nSpread in/out (auto app zoom profile)",
                     fg="#76beff",
                 )
             elif self.mouse_locked:

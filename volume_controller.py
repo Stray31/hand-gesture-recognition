@@ -10,23 +10,19 @@ class VolumeController:
 
     - Toggle mode with right hand index+pinky hold.
     - In mode, only volume gestures should be processed by the caller.
-    - Left hand thumb/index pinch distance controls volume:
-      touching/very close -> volume down, far apart -> volume up.
+    - Left hand index-only (all others down) -> volume up.
+    - Left hand thumb-only (all others down) -> volume down.
     - Right hand open palm pauses volume changes while visible.
     """
 
     def __init__(
         self,
-        toggle_hold_seconds: float = 1.5,
+        toggle_hold_seconds: float = 1.0,
         toggle_cooldown: float = 1.0,
-        pinch_close_threshold: float = 0.34,
-        pinch_open_threshold: float = 0.44,
         volume_step_cooldown: float = 0.10,
     ):
         self.toggle_hold_seconds = float(toggle_hold_seconds)
         self.toggle_cooldown = float(toggle_cooldown)
-        self.pinch_close_threshold = float(pinch_close_threshold)
-        self.pinch_open_threshold = float(pinch_open_threshold)
         self.volume_step_cooldown = float(volume_step_cooldown)
 
         self.active = False
@@ -72,6 +68,22 @@ class VolumeController:
         pinky_up = self._finger_up(right_landmarks, 20, 18)
         return index_up and middle_down and ring_down and pinky_up
 
+    def _is_left_index_only(self, left_landmarks):
+        index_up = self._finger_up(left_landmarks, 8, 6)
+        middle_down = self._finger_down(left_landmarks, 12, 10)
+        ring_down = self._finger_down(left_landmarks, 16, 14)
+        pinky_down = self._finger_down(left_landmarks, 20, 18)
+        return index_up and middle_down and ring_down and pinky_down
+
+    def _is_left_thumb_only(self, left_landmarks):
+        # Left-hand thumb extension heuristic (same orientation logic used elsewhere).
+        thumb_up = left_landmarks[4].x < left_landmarks[3].x
+        index_down = self._finger_down(left_landmarks, 8, 6)
+        middle_down = self._finger_down(left_landmarks, 12, 10)
+        ring_down = self._finger_down(left_landmarks, 16, 14)
+        pinky_down = self._finger_down(left_landmarks, 20, 18)
+        return thumb_up and index_down and middle_down and ring_down and pinky_down
+
     def _reset_tracking(self):
         pass
 
@@ -114,19 +126,14 @@ class VolumeController:
             return
 
         now = time.time()
-        pinch_distance = self._dist(left_landmarks[4], left_landmarks[8])
-        left_width = self._dist(left_landmarks[5], left_landmarks[17])
-        hand_scale = max(0.001, left_width)
-        normalized_pinch = pinch_distance / hand_scale
-
         if (now - self._last_volume_step_time) < self.volume_step_cooldown:
             return
 
-        if normalized_pinch <= self.pinch_close_threshold:
+        if self._is_left_thumb_only(left_landmarks):
             volume_step("down")
             self._last_volume_step_time = now
             self.set_event("VOLUME DOWN")
-        elif normalized_pinch >= self.pinch_open_threshold:
+        elif self._is_left_index_only(left_landmarks):
             volume_step("up")
             self._last_volume_step_time = now
             self.set_event("VOLUME UP")

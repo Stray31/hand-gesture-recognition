@@ -11,7 +11,7 @@ class ModeController:
     1) System Lock:
        - Right pinky-only held for lock_hold_seconds toggles LOCK/UNLOCK
 
-    2) Scroll via PINCH (reliable):
+    2) Scroll via RIGHT-HAND PINCH (reliable):
        - Pinch (thumb tip 4 + index tip 8 close) activates scroll clutch
        - While pinched: move reference landmark vertically to scroll
        - Release pinch: stop scrolling
@@ -147,14 +147,11 @@ class ModeController:
 
         now = time.time()
 
-        # Choose a hand that is pinching (either hand can scroll)
+        # Right hand pinch only.
         scroll_lm = None
         pinch = False
 
-        if left_landmarks is not None and self._pinch_now(left_landmarks):
-            scroll_lm = left_landmarks
-            pinch = True
-        elif right_landmarks is not None and self._pinch_now(right_landmarks):
+        if right_landmarks is not None and self._pinch_now(right_landmarks):
             scroll_lm = right_landmarks
             pinch = True
 
