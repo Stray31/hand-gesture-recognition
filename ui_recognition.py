@@ -55,7 +55,7 @@ class RecognitionScreen(tk.Frame):
         self.camera_running = False
         self.camera_job = None
 
-        self.SHOW_LANDMARKS = False
+        self.SHOW_LANDMARKS = True
         self.SHOW_LANDMARK_NUMBERS = False
 
         self.FRAME_DELAY_MS = 16
