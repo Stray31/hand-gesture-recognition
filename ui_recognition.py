@@ -122,6 +122,7 @@ class RecognitionScreen(tk.Frame):
         self.gesture_queue_right = []
 
         self.GESTURES = [SwipeLeft(), SwipeRight(), PeaceSign()]
+        self.SCROLL_ENABLED = False  # Temporary: disable pinch scroll until redesigned.
 
         # -----------------------------
         # Controllers
@@ -933,7 +934,10 @@ class RecognitionScreen(tk.Frame):
                         else:
                             self._reset_zoom_click_state()
                             self.shortcuts.update(left_landmarks, right_landmarks)
-                            self.modes.update_scroll(left_landmarks, right_landmarks)
+                            if self.SCROLL_ENABLED:
+                                self.modes.update_scroll(left_landmarks, right_landmarks)
+                            else:
+                                self.modes.update_scroll(None, None)
 
                     if self.shortcuts.alt_held or self.modes.scroll_active or self.zoom.active:
                         self.clicks.force_release_left()
