@@ -1,6 +1,10 @@
 import tkinter as tk
 from pathlib import Path
-from PIL import Image, ImageTk
+try:
+    from PIL import Image, ImageTk
+except Exception:
+    Image = None
+    ImageTk = None
 from utils import BG, CARD, CARD_SOFT, SUBTEXT, TEXT, make_card, make_label, make_primary_button, make_soft_button
 
 
@@ -252,6 +256,8 @@ class TutorialScreen(tk.Frame):
 
     @staticmethod
     def _load_gesture_thumbnail(path):
+        if Image is None or ImageTk is None:
+            return None
         try:
             image = Image.open(path).convert("RGB")
             resampling = getattr(Image, "Resampling", Image)
@@ -365,6 +371,8 @@ class TutorialScreen(tk.Frame):
 
     @staticmethod
     def _load_popup_image(path):
+        if Image is None or ImageTk is None:
+            return None
         try:
             image = Image.open(path).convert("RGB")
             resampling = getattr(Image, "Resampling", Image)

@@ -16,9 +16,8 @@ class AboutScreen(tk.Frame):
         shell = tk.Frame(self, bg=BG, padx=34, pady=30)
         shell.pack(fill="both", expand=True)
 
-        # top row
         top = tk.Frame(shell, bg=BG)
-        top.pack(fill="x", pady=(0, 22))
+        top.pack(fill="x", pady=(0, 16))
 
         left = tk.Frame(top, bg=BG)
         left.pack(side="left")
@@ -33,32 +32,55 @@ class AboutScreen(tk.Frame):
         make_label(right, "Information", size=26, weight="bold", bg=BG).pack(anchor="e")
         make_label(right, "GestureFlow", size=10, fg=SUBTEXT, bg=BG).pack(anchor="e", pady=(4, 0))
 
-        grid = tk.Frame(shell, bg=BG)
-        grid.pack(fill="both", expand=True)
+        content_wrap = tk.Frame(shell, bg=BG)
+        content_wrap.pack(fill="both", expand=True)
 
-        for i in range(3):
-            grid.columnconfigure(i, weight=1)
+        self.canvas = tk.Canvas(content_wrap, bg=BG, highlightthickness=0, bd=0)
+        self.vbar = tk.Scrollbar(content_wrap, orient="vertical", command=self.canvas.yview)
+        self.canvas.configure(yscrollcommand=self.vbar.set)
 
-        col1 = tk.Frame(grid, bg=BG)
+        self.vbar.pack(side="right", fill="y")
+        self.canvas.pack(side="left", fill="both", expand=True)
+
+        self.grid_host = tk.Frame(self.canvas, bg=BG)
+        self.canvas_window = self.canvas.create_window((0, 0), window=self.grid_host, anchor="nw")
+
+        self.grid_host.bind("<Configure>", self._on_frame_configure)
+        self.canvas.bind("<Configure>", self._on_canvas_configure)
+        self.canvas.bind_all("<MouseWheel>", self._on_mousewheel)
+        self.canvas.bind_all("<Button-4>", self._on_mousewheel)
+        self.canvas.bind_all("<Button-5>", self._on_mousewheel)
+
+        self.grid_host.columnconfigure(0, weight=1)
+        self.grid_host.columnconfigure(1, weight=1)
+        self.grid_host.columnconfigure(2, weight=1)
+
+        col1 = tk.Frame(self.grid_host, bg=BG)
         col1.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
 
-        col2 = tk.Frame(grid, bg=BG)
+        col2 = tk.Frame(self.grid_host, bg=BG)
         col2.grid(row=0, column=1, sticky="nsew", padx=10)
 
-        col3 = tk.Frame(grid, bg=BG)
+        col3 = tk.Frame(self.grid_host, bg=BG)
         col3.grid(row=0, column=2, sticky="nsew", padx=(10, 0))
 
         self.section_card(
             col1,
             "Gesture List",
             [
-                ("Thumbs Up", "System ready switch"),
-                ("Open Palm", "Lock or unlock"),
-                ("Pinch", "Scroll and click interactions"),
-                ("Swipe Left / Right", "Navigation"),
-                ("Peace Sign", "Mouse mode"),
-                ("Fist", "Shortcut action"),
-            ]
+                ("Swipe Left (Right Hand)", "Moves to next slide."),
+                ("Swipe Right (Left Hand)", "Moves to previous slide."),
+                ("Right Peace Sign", "Mouse mode (cursor and clicks)."),
+                ("Left OK Sign", "Toggle PiP camera mode."),
+                ("Right Pinky Only", "Lock/unlock recognition."),
+                ("Left Pinky Only", "Mouse lock toggle."),
+                ("Right Fist + Left Index/Middle", "Start Alt+Tab mode."),
+                ("Volume Mode Toggle", "Right index+pinky hold."),
+                ("Volume Up", "Left index-only in volume mode."),
+                ("Volume Down", "Left thumb-only in volume mode."),
+                ("Zoom Mode Enter", "Both palms open hold 1s."),
+                ("Zoom Mode Exit", "Both fists hold 1s."),
+            ],
         ).pack(fill="x", pady=(0, 16))
 
         self.section_card(
@@ -69,7 +91,7 @@ class AboutScreen(tk.Frame):
                 ("02 Landmark Detection", "Hand tracking landmarks"),
                 ("03 Gesture Classification", "Pattern matching"),
                 ("04 Action Trigger", "System command execution"),
-            ]
+            ],
         ).pack(fill="x")
 
         self.section_card(
@@ -80,7 +102,7 @@ class AboutScreen(tk.Frame):
                 ("Distance Control", "Stay around 1 to 2 feet from the camera."),
                 ("Background Clarity", "Use a simple background."),
                 ("Steady Pace", "Perform gestures at a moderate speed."),
-            ]
+            ],
         ).pack(fill="x", pady=(0, 16))
 
         self.section_card(
@@ -90,7 +112,7 @@ class AboutScreen(tk.Frame):
                 ("Hardware", "720p+ Webcam"),
                 ("Processor", "Multi-core CPU"),
                 ("Memory", "4GB+ RAM"),
-            ]
+            ],
         ).pack(fill="x")
 
         self.section_card(
@@ -98,22 +120,28 @@ class AboutScreen(tk.Frame):
             "Project Team",
             [
                 ("Romel Caadyang", "Quality Assurance"),
-                ("Gabriel Angelo Miñoza", "UI/UX Designer"),
+                ("Gabriel Angelo Minoza", "UI/UX Designer"),
                 ("Noreen Mae Norcio", "Documentation Lead"),
                 ("Janluke Pamular", "Lead Developer"),
-            ]
-        ).pack(fill="x", pady=(0, 16))
-
-        self.section_card(
-            col3,
-            "Project Timeline",
-            [
-                ("Oct 2025", "Conceptualization"),
-                ("Dec 2025", "Engine Development"),
-                ("Feb 2026", "Interface Design"),
-                ("Mar 2026", "Final Review"),
-            ]
+            ],
         ).pack(fill="x")
+
+    def _on_frame_configure(self, _event):
+        self.canvas.configure(scrollregion=self.canvas.bbox("all"))
+
+    def _on_canvas_configure(self, event):
+        self.canvas.itemconfigure(self.canvas_window, width=event.width)
+
+    def _on_mousewheel(self, event):
+        if not self.winfo_ismapped():
+            return
+        if hasattr(event, "delta") and event.delta:
+            direction = -1 if event.delta > 0 else 1
+        elif getattr(event, "num", None) == 4:
+            direction = -1
+        else:
+            direction = 1
+        self.canvas.yview_scroll(direction, "units")
 
     def section_card(self, parent, title, rows):
         card = make_card(parent, bg=CARD)
