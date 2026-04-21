@@ -28,11 +28,12 @@ from volume_controller import VolumeController
 
 
 class RecognitionScreen(tk.Frame):
-    def __init__(self, master, on_show_about, on_exit_to_tutorial):
+    def __init__(self, master, on_show_about, on_exit_to_tutorial, on_exit_app):
         super().__init__(master, bg=BG)
 
         self.on_show_about = on_show_about
         self.on_exit_to_tutorial = on_exit_to_tutorial
+        self.on_exit_app = on_exit_app
 
         # -----------------------------
         # MediaPipe setup
@@ -212,7 +213,8 @@ class RecognitionScreen(tk.Frame):
         left_actions.grid(row=0, column=0, sticky="w")
 
         make_soft_button(left_actions, "Information", self.handle_show_about).pack(side="left", padx=(0, 10))
-        make_soft_button(left_actions, "Exit", self.handle_exit).pack(side="left")
+        make_soft_button(left_actions, "Replay Tutorial", self.handle_exit).pack(side="left", padx=(0, 10))
+        make_soft_button(left_actions, "Exit", self.handle_exit_app).pack(side="left")
 
         self.right_status = tk.Frame(top, bg=BG)
         self.right_status.grid(row=0, column=1, sticky="e")
@@ -561,6 +563,10 @@ class RecognitionScreen(tk.Frame):
     def handle_exit(self):
         self.stop_camera()
         self.on_exit_to_tutorial()
+
+    def handle_exit_app(self):
+        self.stop_camera()
+        self.on_exit_app()
 
     # -----------------------------
     # UI state

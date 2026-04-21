@@ -3,12 +3,12 @@ from utils import BG, CARD, SUBTEXT, make_card, make_label, make_soft_button
 
 
 class AboutScreen(tk.Frame):
-    def __init__(self, master, on_back, on_replay_tutorial, on_exit_system):
+    def __init__(self, master, on_back, on_replay_tutorial, on_exit_app):
         super().__init__(master, bg=BG)
 
         self.on_back = on_back
         self.on_replay_tutorial = on_replay_tutorial
-        self.on_exit_system = on_exit_system
+        self.on_exit_app = on_exit_app
 
         self.build_ui()
 
@@ -25,7 +25,7 @@ class AboutScreen(tk.Frame):
 
         make_soft_button(left, "Back to Camera", self.on_back).pack(side="left", padx=(0, 10))
         make_soft_button(left, "Replay Tutorial", self.on_replay_tutorial).pack(side="left", padx=(0, 10))
-        make_soft_button(left, "Exit System", self.on_exit_system).pack(side="left")
+        make_soft_button(left, "Exit", self.on_exit_app).pack(side="left")
 
         right = tk.Frame(top, bg=BG)
         right.pack(side="right")

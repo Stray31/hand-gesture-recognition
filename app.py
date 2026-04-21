@@ -1,4 +1,5 @@
 import tkinter as tk
+from tkinter import messagebox
 import ctypes
 from ctypes import wintypes
 
@@ -85,7 +86,8 @@ class GestureFlowApp(tk.Tk):
         self.current_screen = RecognitionScreen(
             self,
             on_show_about=self.show_about,
-            on_exit_to_tutorial=self.show_tutorial
+            on_exit_to_tutorial=self.show_tutorial,
+            on_exit_app=self.confirm_exit_app,
         )
         self.current_screen.pack(fill="both", expand=True)
 
@@ -95,9 +97,18 @@ class GestureFlowApp(tk.Tk):
             self,
             on_back=self.show_recognition,
             on_replay_tutorial=self.show_tutorial,
-            on_exit_system=self.show_tutorial
+            on_exit_app=self.confirm_exit_app,
         )
         self.current_screen.pack(fill="both", expand=True)
+
+    def confirm_exit_app(self):
+        confirmed = messagebox.askyesno(
+            "Exit GestureFlow",
+            "Are you sure you want to exit?",
+            parent=self,
+        )
+        if confirmed:
+            self.destroy()
 
 
 if __name__ == "__main__":
